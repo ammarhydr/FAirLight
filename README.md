@@ -6,10 +6,9 @@ Usage and more information can be found below.
 
 ## Installation Guide
 ### Dependencies
-- python 3.*
-- tensorflow v1.0+
+- [PyTorch](https://pytorch.org/get-started/previous-versions/#v120) (The code is tested on PyTorch 1.2.0.) 
 - [CityFlowEmission](https://github.com/ammarhydr/CityFlowEmission)
-
+- Tensorflow v1.0+ (for baseline models)
 
 ## Example 
 
