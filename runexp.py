@@ -13,7 +13,7 @@ import os
 from script import get_traffic_volume
 
 multi_process = False
-CONSTRAINT = False
+CONSTRAINT = True
 CONST_NUM=100
 TOP_K_ADJACENCY=-1
 TOP_K_ADJACENCY_LANE=-1
@@ -35,34 +35,6 @@ def parse_args():
     parser.add_argument("--road_net", type=str, default='4_4')#'6_6') # which road net you are going to run
     parser.add_argument("--volume", type=str, default='hangzhou')#'300'
     parser.add_argument("--suffix", type=str, default="real_5816")#0.3
-    
-    # parser.add_argument("--memo", type=str, default='Jinan_3_4')#1_3,2_2,3_3,4_4
-    # parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
-    # parser.add_argument("--gui", type=bool, default=False)
-    # parser.add_argument("--road_net", type=str, default='3_4')#'6_6') # which road net you are going to run
-    # parser.add_argument("--volume", type=str, default='jinan')#'300'
-    # parser.add_argument("--suffix", type=str, default="real")#0.3
-    
-    # parser.add_argument("--memo", type=str, default='NewYork_16_3')#1_3,2_2,3_3,4_4
-    # parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
-    # parser.add_argument("--gui", type=bool, default=False)
-    # parser.add_argument("--road_net", type=str, default='16_3')#'6_6') # which road net you are going to run
-    # parser.add_argument("--volume", type=str, default='newyork')#'300'
-    # parser.add_argument("--suffix", type=str, default="real")#0.3
-    
-    # parser.add_argument("--memo", type=str, default='0515_afternoon_Colight_3_3_bi_high_2')#1_3,2_2,3_3,4_4
-    # parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
-    # parser.add_argument("--gui", type=bool, default=True)
-    # parser.add_argument("--road_net", type=str, default='3_3')#'1_2') # which road net you are going to run
-    # parser.add_argument("--volume", type=str, default='300')#'300'
-    # parser.add_argument("--suffix", type=str, default="0.3_bi_high")#0.3
-
-    # parser.add_argument("--memo", type=str, default='SingleInt')#1_3,2_2,3_3,4_4
-    # parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
-    # parser.add_argument("--gui", type=bool, default=True)
-    # parser.add_argument("--road_net", type=str, default='1_1')#'1_2') # which road net you are going to run
-    # parser.add_argument("--volume", type=str, default='2400')#'300'
-    # parser.add_argument("--suffix", type=str, default="uni")#0.3
     
     global hangzhou_archive
     hangzhou_archive=False
