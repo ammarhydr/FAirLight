@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="SF_downtown.net.xml"/>
+        <route-files value="downtown_new.rou.xml"/>
+    </input>
+  <time>
+    <begin value="28800"/>
+    <end value="39540"/>
+  </time>
+    <processing>
+        <time-to-teleport value="-1"/>
+    </processing>
+
+    <report>
+		<verbose value="false"/>
+        <duration-log.disable value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+</configuration>
