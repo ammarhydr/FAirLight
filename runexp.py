@@ -1,4 +1,3 @@
-
 import config
 import copy
 from pipeline import Pipeline
@@ -13,18 +12,33 @@ import os
 from script import get_traffic_volume
 
 multi_process = False
-CONSTRAINT = True
-CONST_NUM=100
-TOP_K_ADJACENCY=-1
-TOP_K_ADJACENCY_LANE=-1
-PRETRAIN=False
-NUM_ROUNDS=200
-EARLY_STOP=False 
-NEIGHBOR=False
-SAVEREPLAY=True
-ADJACENCY_BY_CONNECTION_OR_GEO=False
-hangzhou_archive=True
-ANON_PHASE_REPRE=[]
+CONSTRAINT = False
+CONST_NUM = 0
+NUM_ROUNDS = 500
+
+
+
+# # single
+# GREEN_CONST=35
+# GREEN_CONSERVATIVE_CONST=45
+# REG_PARAMS=12.5
+# STOP_PENALTY = 30
+# IS_ENCOURAGE = True
+
+#Hangzhou
+GREEN_CONST=35
+GREEN_CONSERVATIVE_CONST=45
+REG_PARAMS=13.5 
+STOP_PENALTY = 45
+IS_ENCOURAGE = False
+
+# #Jinan
+# GREEN_CONST=35
+# GREEN_CONSERVATIVE_CONST=45
+# REG_PARAMS = 14.25 
+# STOP_PENALTY = 45
+# IS_ENCOURAGE = True
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -36,21 +50,47 @@ def parse_args():
     parser.add_argument("--volume", type=str, default='hangzhou')#'300'
     parser.add_argument("--suffix", type=str, default="real_5816")#0.3
     
+    # parser.add_argument("--memo", type=str, default='Jinan_3_4')#1_3,2_2,3_3,4_4
+    # parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
+    # parser.add_argument("--gui", type=bool, default=False)
+    # parser.add_argument("--road_net", type=str, default='3_4')#'6_6') # which road net you are going to run
+    # parser.add_argument("--volume", type=str, default='jinan')#'300'
+    # parser.add_argument("--suffix", type=str, default="real")#0.3
+    
+    # parser.add_argument("--memo", type=str, default='NewYork_16_3')#1_3,2_2,3_3,4_4
+    # parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
+    # parser.add_argument("--gui", type=bool, default=False)
+    # parser.add_argument("--road_net", type=str, default='16_3')#'6_6') # which road net you are going to run
+    # parser.add_argument("--volume", type=str, default='newyork')#'300'
+    # parser.add_argument("--suffix", type=str, default="real")#0.3
+    
+    # parser.add_argument("--memo", type=str, default='0515_afternoon_Colight_3_3_bi_high_2')#1_3,2_2,3_3,4_4
+    # parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
+    # parser.add_argument("--gui", type=bool, default=True)
+    # parser.add_argument("--road_net", type=str, default='3_3')#'1_2') # which road net you are going to run
+    # parser.add_argument("--volume", type=str, default='300')#'300'
+    # parser.add_argument("--suffix", type=str, default="0.3_bi_high")#0.3
+
+    # parser.add_argument("--memo", type=str, default='SingleInt')#1_3,2_2,3_3,4_4
+    # parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
+    # parser.add_argument("--gui", type=bool, default=True)
+    # parser.add_argument("--road_net", type=str, default='1_1')#'1_2') # which road net you are going to run
+    # parser.add_argument("--volume", type=str, default='2400')#'300'
+    # parser.add_argument("--suffix", type=str, default="uni")#0.3
+    
     global hangzhou_archive
     hangzhou_archive=False
     global TOP_K_ADJACENCY
     TOP_K_ADJACENCY=1
     global TOP_K_ADJACENCY_LANE
     TOP_K_ADJACENCY_LANE=5
-    # global NUM_ROUNDS
-    # NUM_ROUNDS=100
     global EARLY_STOP
     EARLY_STOP=False
     global NEIGHBOR
     # TAKE CARE
     NEIGHBOR=False
-    # global SAVEREPLAY # if you want to relay your simulation, set it to be True
-    # SAVEREPLAY=False
+    global SAVEREPLAY # if you want to relay your simulation, set it to be True
+    SAVEREPLAY=True
     global ADJACENCY_BY_CONNECTION_OR_GEO
     # TAKE CARE
     ADJACENCY_BY_CONNECTION_OR_GEO=False
@@ -58,7 +98,7 @@ def parse_args():
     #modify:TOP_K_ADJACENCY in line 154
     global PRETRAIN
     PRETRAIN=False
-    parser.add_argument("--mod", type=str, default="DQN_torch")#SAC_One,SAC_Colight,Colight_torch,DQN_torch,SimpleDQN,SimpleDQNOne,GCN,CoLight,Lit,SAC
+    parser.add_argument("--mod", type=str, default="DQN_torch")#SAC_One,SAC_Colight,Colight_torch,DQN_torch,CoLight,SAC,Fixedtime,MaxPressure
     parser.add_argument("--cnt",type=int, default=3600)#3600
     parser.add_argument("--gen",type=int, default=1)#4
 
@@ -186,7 +226,12 @@ def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers
             "PRETRAIN_NUM_GENERATORS": 15,
             "CONSTRAINT": CONSTRAINT,
             "CONST_NUM": CONST_NUM,
-
+            "REG_PARAMS":REG_PARAMS,
+            "GREEN_CONST":GREEN_CONST,
+            "GREEN_CONSERVATIVE_CONST":GREEN_CONSERVATIVE_CONST,
+            "STOP_PENALTY":STOP_PENALTY,
+            "IS_ENCOURAGE":IS_ENCOURAGE,
+            
             "AGGREGATE": False,
             "DEBUG": False,
             "EARLY_STOP": EARLY_STOP,
@@ -230,6 +275,11 @@ def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers
 
             "NEIGHBOR": NEIGHBOR,
             "MODEL_NAME": mod,
+            "REG_PARAMS":REG_PARAMS,
+            "GREEN_CONST":GREEN_CONST,
+            "GREEN_CONSERVATIVE_CONST":GREEN_CONSERVATIVE_CONST,
+            "STOP_PENALTY":STOP_PENALTY,
+            "IS_ENCOURAGE":IS_ENCOURAGE,
 
 
 

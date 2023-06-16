@@ -16,6 +16,8 @@ class ConstructSample:
         self.hidden_states_list = None
         self.samples = []
         self.samples_all_intersection = [None]*self.dic_traffic_env_conf['NUM_INTERSECTIONS']
+        self.constrain = dic_traffic_env_conf['CONST_NUM']
+
 
     def load_data(self, folder, i):
 
@@ -127,7 +129,6 @@ class ConstructSample:
         return reward
 
 
-
     def cal_reward(self, rs, rewards_components):
         r = 0
         for component, weight in rewards_components.items():
@@ -140,27 +141,61 @@ class ConstructSample:
             r += rs[component] * weight
         return r
 
+    # new model 
+    # def construct_reward(self,rewards_components,time, i):
 
+    #     rs = self.logging_data_list_per_gen[i][time + self.measure_time - 1]
+    #     cost_inst =  rs['state']['average_constraint']
+    #     assert time + self.measure_time - 1 == rs["time"]
+    #     r_instant = - rs['state']['reward']
+    #     # rs = self.get_reward_from_features(rs['state'])
+    #     # r_instant = self.cal_reward(rs, rewards_components)
+
+    #     # average
+    #     list_r = []
+    #     list_cost=[]
+    #     for t in range(time, time + self.measure_time):
+    #         #print("t is ", t)
+    #         rs = self.logging_data_list_per_gen[i][t]
+    #         a = rs['state']['average_constraint']
+    #         assert t == rs["time"]
+    #         r = - rs['state']['reward']
+    #         # rs = self.get_reward_from_features(rs['state'])
+    #         # r = self.cal_reward(rs, rewards_components)
+    #         list_r.append(r)
+    #         list_cost.append(a)
+    #     r_average = np.average(list_r)
+    #     cost_average = np.average(list_cost)
+    #     # print(av_cost)
+    #     return r_instant, r_average, cost_inst
+    #     # return r_average, r_instant, cost_average
+    
+    # old model in KDD Hangzhou
     def construct_reward(self,rewards_components,time, i):
 
         rs = self.logging_data_list_per_gen[i][time + self.measure_time - 1]
-        av_cost = rs['state']['average_constraint']
-        assert time + self.measure_time - 1 == rs["time"]
-        rs = self.get_reward_from_features(rs['state'])
-        r_instant = self.cal_reward(rs, rewards_components)
+        em_cost = rs['state']['emission_constraint']
+        max_cost = rs['state']['max_constraint']
+        r_instant = - rs['state']['reward']
 
         # average
         list_r = []
         for t in range(time, time + self.measure_time):
-            #print("t is ", t)
             rs = self.logging_data_list_per_gen[i][t]
             assert t == rs["time"]
-            rs = self.get_reward_from_features(rs['state'])
-            r = self.cal_reward(rs, rewards_components)
+            r = - rs['state']['reward']
             list_r.append(r)
         r_average = np.average(list_r)
+        
+        if self.dic_traffic_env_conf["CONSTRAINT"] and self.cnt_round>self.constrain:
+            return r_instant-max_cost, r_average, em_cost
+            # return r_instant, r_average, em_cost
+            # return r_instant, r_average, (em_cost+max_cost) #only Average Constraint
+        else:
+            return r_instant, r_average, em_cost
+            # return r_instant-(em_cost+max_cost), r_average, em_cost # Only peak Constraint
+        
 
-        return r_instant, r_average, av_cost
 
     def judge_action(self,time,i):
         if self.logging_data_list_per_gen[i][time]['action'] == -1:
@@ -201,7 +236,7 @@ class ConstructSample:
                 else:
                     next_state = self.construct_state(self.dic_traffic_env_conf["LIST_STATE_FEATURE"],
                                                       time + self.interval, i)
-                sample = [state, action, next_state, reward_average, reward_instant, constraint, time,
+                sample = [state, action, next_state, reward_instant, reward_average, constraint, time,
                           folder+"-"+"round_{0}".format(self.cnt_round)]
                 list_samples.append(sample)
 

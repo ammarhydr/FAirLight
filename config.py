@@ -356,9 +356,31 @@ DIC_SAC_AGENT_CONF = {
 }
 
 DIC_SAC_ONE_AGENT_CONF = {
-    "LEARNING_RATE": 0.0007,
-    "SAMPLE_SIZE": 250,
-    "BATCH_SIZE": 64,
+    # "CRITIC_LEARNING_RATE": 3e-3,
+    # "ACTOR_LEARNING_RATE":5e-03,
+    # "ALPHA_LEARNING_RATE":1e-04,
+    # "LAM_LEARNING_RATE":5e-4,
+    # "LAM_UPDATE_RATE":25,    
+
+    # Full Training Worked
+    "CRITIC_LEARNING_RATE": 3e-3,
+    "ACTOR_LEARNING_RATE":3e-3,
+    "ALPHA_LEARNING_RATE":1e-05,    
+    "LAM_LEARNING_RATE":8e-4,
+    # "LAM_LEARNING_RATE":1e-2,
+    "LAM_UPDATE_RATE":25,  
+
+    # Pre worked    
+    # "CRITIC_LEARNING_RATE": 3e-5,
+    # "ACTOR_LEARNING_RATE":3e-5,
+    # "ALPHA_LEARNING_RATE":5e-05,    
+    # "LAM_LEARNING_RATE":1e-5,
+    # "LAM_UPDATE_RATE":10,
+    
+    "MIN_LEARNING_RATE": 1e-6,
+    "LEARNING_DECAY": 0.99,
+    "SAMPLE_SIZE": 500,
+    "BATCH_SIZE": 500,
     "EPOCHS": 50,
     "UPDATE_Q_BAR_FREQ": 5,
     "UPDATE_Q_BAR_EVERY_C_ROUND": False,
@@ -368,14 +390,32 @@ DIC_SAC_ONE_AGENT_CONF = {
     "D_DENSE": 20,
     "N_LAYER": 2,
 
+    "EPSILON": 1,
+    "EPSILON_DECAY": 0.99,
+    "MIN_EPSILON": 0.1,
+    
     "LOSS_FUNCTION": "mean_squared_error",
     "SEPARATE_MEMORY": False,
     "TRAFFIC_FILE": "cross.2phases_rou01_equal_450.xml",
 }
 
 DIC_SAC_COLIGHT_AGENT_CONF = {
+    # # Full Training Worked
+    # "CRITIC_LEARNING_RATE": 1e-3,
+    # "ACTOR_LEARNING_RATE":1e-2,
+    # "ALPHA_LEARNING_RATE":5e-06,    
+    # "LAM_LEARNING_RATE":1e-5, 
+    # "LAM_UPDATE_RATE":2,  
+    
+    # Full Training Worked
+    "CRITIC_LEARNING_RATE": 3e-3,
+    "ACTOR_LEARNING_RATE":7e-4,
+    "ALPHA_LEARNING_RATE":5e-05,    
+    "LAM_LEARNING_RATE":1e-3,
+    "LAM_UPDATE_RATE":25, 
+
     # "LEARNING_RATE": 0.003, #Jian
-    "LEARNING_RATE": 0.001, #Hangzhou
+    # "LEARNING_RATE": 0.001, #Hangzhou
     "SAMPLE_SIZE": 120,
     "BATCH_SIZE": 64,
     "EPOCHS": 50,

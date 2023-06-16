@@ -291,20 +291,25 @@ class Intersection:
         self.peak_time=[]
         self.min_action_time = dic_traffic_env_conf['MIN_ACTION_TIME']
         # # Single intersecion
+        self.max_green = dic_traffic_env_conf['GREEN_CONST']
+        self.max_green_cons = dic_traffic_env_conf['GREEN_CONSERVATIVE_CONST']
+        # # # Hangzhou
+        # self.max_green = 2.5  * self.min_action_time
+        # self.max_green_cons = 3.5 * self.min_action_time
+        # # # Jinan
         # self.max_green = 2  * self.min_action_time
         # self.max_green_cons = 3 * self.min_action_time
-        # # Hangzhou
-        self.max_green = 3  * self.min_action_time
-        self.max_green_cons = 4 * self.min_action_time
-        # # # # Jinan
-        # self.max_green = 2  * self.min_action_time
-        # self.max_green_cons = 3 * self.min_action_time
+        
+        self.stop_penalty = dic_traffic_env_conf['STOP_PENALTY']
+        self.is_encourage= dic_traffic_env_conf['IS_ENCOURAGE']
         
         self.green_time = 0
         self.peak_maxgreen = 0
         self.peak_check = False
-        self.const_maxgreen  = 0
-        self.average_const = 0
+        self.const_max_rew  = 0
+        self.const_emission_rew = 0
+        self.peak_const = 0
+        self.reward = 0
         
         if reg_params:         
             self.coef = reg_params[0]
@@ -445,10 +450,13 @@ class Intersection:
             list_vehicle_new_left_entering_lane += l
 
         self.num_vehicle_left_entring_lane += len(list_vehicle_new_left_entering_lane)
-
-        for i in range(len(self.direction_lanes)):
-            self.veh_left_byphase[i]+=self._update_leave_entering_approach_phase(self.direction_lanes[i])
-
+        
+        try:
+            for i in range(len(self.direction_lanes)):
+                self.veh_left_byphase[i]+=self._update_leave_entering_approach_phase(self.direction_lanes[i])
+        except:
+            pass
+        
         # update vehicle arrive and left time
         self._update_arrive_time(list_vehicle_new_arrive)
         self._update_left_time(list_vehicle_new_left_entering_lane)
@@ -504,8 +512,11 @@ class Intersection:
         
         self.num_vehicle_left_entring_lane += len(list_vehicle_new_left_entering_lane)
         
-        for i in range(len(self.direction_lanes)):
-            self.veh_left_byphase[i]+=self._update_leave_entering_approach_phase(self.direction_lanes[i])
+        try:
+            for i in range(len(self.direction_lanes)):
+                self.veh_left_byphase[i]+=self._update_leave_entering_approach_phase(self.direction_lanes[i])
+        except:
+            pass
 
         # update vehicle arrive and left time
         self._update_arrive_time(list_vehicle_new_arrive)
@@ -573,7 +584,7 @@ class Intersection:
                 self.dic_vehicle_arrive_leave_time[vehicle] = \
                     {"enter_time": ts, "leave_time": np.nan}
             else:
-                #print("vehicle: %s already exists in entering lane!"%vehicle)
+                # print("vehicle: %s already exists in entering lane!"%vehicle)
                 #sys.exit(-1)
                 pass
 
@@ -664,7 +675,10 @@ class Intersection:
 
         dic_feature['connectivity'] = self._get_connectivity(self.neighbor_lanes_ENWS)
 
-        dic_feature['average_constraint'] = self.average_const
+        dic_feature['emission_constraint'] = self.const_emission_rew
+        dic_feature['max_constraint'] = self.const_max_rew
+        dic_feature['reward'] = self.reward
+        
         dic_feature['peak_max_green_violations'] = self.peak_maxgreen
 
         dic_feature['constraint_emission'] = self.const_emission
@@ -909,7 +923,57 @@ class Intersection:
         dic_state = {state_feature_name: self.dic_feature[state_feature_name] for state_feature_name in list_state_features}
 
         return dic_state
+    
+    # new formulation for single intersection that worked
+    # def get_reward(self, dic_reward_info):
+    #     # customize your own reward
+    #     dic_reward = dict()
+    #     dic_reward["flickering"] = None
+    #     dic_reward["sum_lane_queue_length"] = None
+    #     dic_reward["sum_lane_wait_time"] = None
+    #     dic_reward["sum_lane_num_vehicle_left"] = None
+    #     dic_reward["sum_duration_vehicle_left"] = None
+    #     dic_reward["sum_num_vehicle_been_stopped_thres01"] = None
+    #     dic_reward["sum_num_vehicle_been_stopped_thres1"] = np.sum(self.dic_feature["lane_num_vehicle_been_stopped_thres1"])
+    #     dic_reward["sum_lane_vehicle_delay"]=np.sum(self.dic_feature["lane_vehicle_delay"])
 
+    #     dic_reward['pressure'] = None # np.sum(self.dic_feature["pressure"])
+
+    #     # reward = 0
+    #     # for r in dic_reward_info:
+    #     #     if dic_reward_info[r] != 0:
+    #     #         reward += dic_reward_info[r] * dic_reward[r]
+        
+    #     self.reward = (dic_reward["sum_lane_vehicle_delay"] + 30 * dic_reward["sum_num_vehicle_been_stopped_thres1"])/60
+    #     # print("intersection: ",self.inter_id)
+    #     # print("reward: ", reward)
+    #     self.const_emission = 0
+    #     self.const_maxgreen  = 0
+    #     self.average_const = 0
+
+    #     if self.peak_check==True:
+    #         self.const_maxgreen = (self.green_time-self.max_green)
+    #         self.peak_check = False
+
+
+    #     total_veh = sum(self._get_lane_num_vehicle(self.list_entering_lanes))
+    #     if total_veh>0:
+    #         self.emission = sum(self._get_lane_vehicle_emission(self.list_entering_lanes))
+    #         self.emission_pred=self.coef*total_veh + self.intercept
+    #         if self.emission < self.emission_pred:
+    #             self.const_emission = self.emission - self.emission_pred
+    #         if self.emission > self.emission_pred:
+    #             self.peak_emission += 1 
+                    
+ 
+    #     if self.dic_traffic_env_conf["CONSTRAINT"] and self.cnt_round>self.constrain:
+    #         # self.reward += 2*self.const_maxgreen
+    #         self.average_const = -1*self.const_emission - 1*self.const_maxgreen
+    #         # self.average_const = (0.001*self.const_maxgreen - 1*self.const_emission) 
+
+    #     return self.reward, self.average_const
+
+    # original reward submitted to KDD
     def get_reward(self, dic_reward_info):
         # customize your own reward
         dic_reward = dict()
@@ -928,15 +992,16 @@ class Intersection:
         # for r in dic_reward_info:
         #     if dic_reward_info[r] != 0:
         #         reward += dic_reward_info[r] * dic_reward[r]
+        self.const_emission = 0    
+        self.const_maxgreen  = 0
+
         
-        reward = (dic_reward["sum_lane_vehicle_delay"] + 30 * dic_reward["sum_num_vehicle_been_stopped_thres1"])/60
+        self.reward = (dic_reward["sum_lane_vehicle_delay"] + self.stop_penalty * dic_reward["sum_num_vehicle_been_stopped_thres1"])/60
         # print("intersection: ",self.inter_id)
         # print("reward: ", reward)
         if self.peak_check==True:
             self.const_maxgreen = (self.green_time-self.max_green)
             self.peak_check = False
-        else:
-            self.const_maxgreen  = 0
 
         total_veh = sum(self._get_lane_num_vehicle(self.list_entering_lanes))
         # print("Total vehivle: ", total_veh)
@@ -944,24 +1009,22 @@ class Intersection:
         if total_veh>0:
             self.emission = sum(self._get_lane_vehicle_emission(self.list_entering_lanes))
             self.emission_pred=self.coef*total_veh + self.intercept
-            if self.emission > 0.9*self.emission_pred:
-                self.const_emission = 1*(self.emission - self.emission_pred)
-                if self.emission > self.emission_pred:
-                    self.peak_emission += 1 
-                if self.dic_traffic_env_conf["CONSTRAINT"] and self.cnt_round>self.constrain:
-                    # print('Reward is ',reward)
-                    # Hangzhou, jinan
-         
+            if self.is_encourage:          
+                if self.emission < self.emission_pred:
+                    self.const_emission = -(self.emission - self.emission_pred)
+            else:
+                if self.emission > 0.9*self.emission_pred:
+                    self.const_emission = (self.emission - 0.9*self.emission_pred)
 
-                    # Single
-                    # self.const_emission = 0.5*(self.emission - self.emission_pred)
-                    reward += self.const_emission
-                    # reward += 10*reward
+            if self.emission > self.emission_pred:
+                self.peak_emission += 1 
+
                     
             
-        self.average_const = self.const_maxgreen + self.const_emission    
-        self.const_emission = 0    
-        return reward, self.average_const
+        self.const_max_rew = self.const_maxgreen    
+        self.const_emission_rew = self.const_emission    
+        return self.reward, self.const_max_rew+self.const_max_rew
+    
 
 
 class AnonEnv:
@@ -1033,12 +1096,8 @@ class AnonEnv:
         #             [[12.82, -1.13],[12.82, -1.189],[12.82, -0.692], [12.7, 2.112]],
         #             [[12.03, 2.82],[12.99, 3.512],[12.98, 4.082],[12.9, 60.612]]]
         
-        # single
-        # reg_params=[11.5, 0]
-        # #Hangzhou
-        reg_params=[13, 0]
-        # # # #Jinan
-        # reg_params=[13.5, 0]
+        
+        reg_params=[self.dic_traffic_env_conf['REG_PARAMS'], 0]
 
         # # initialize intersections (grid)
         self.list_intersection = [Intersection((i+1, j+1), self.dic_traffic_env_conf, self.eng,
@@ -1120,6 +1179,8 @@ class AnonEnv:
 
     def step(self, action):
         # step_start_time = time.time()
+        # if action[0]==1: 
+        # print('action at step function: ',action)
         list_action_in_sec = [action]
         list_action_in_sec_display = [action]
         for i in range(self.dic_traffic_env_conf["MIN_ACTION_TIME"]-1):

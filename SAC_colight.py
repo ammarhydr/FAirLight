@@ -16,6 +16,9 @@ from collections import OrderedDict
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
+
+
 class ColightNet(torch.nn.Module):
     def __init__(self, obs_space, action_space, model_config, name):
         super(ColightNet, self).__init__()
@@ -221,25 +224,30 @@ class SACAgentColight(Agent):
         
         self.state_dim = 12 + 8 #* self.num_agents
         self.target_entropy = 0.98 * -np.log(1 / self.num_actions)
+        self.cost_lim = 10
         
         # # #Hangzhou
         # self.alpha_lr = 5e-06
         # self.cost_lim = -1e-5
         # self.lam_lr = 1e-07
         
-        self.alpha_lr = 3e-06
-        self.cost_lim = -1e-5
-        self.lam_lr = 1e-07
+        # self.alpha_lr = 3e-06
+        # self.actor_lr=0.01
+        # self.lam_lr = 1e-07
+
+        self.alpha_lr = self.dic_agent_conf["ALPHA_LEARNING_RATE"]
+        self.lam_lr = self.dic_agent_conf["LAM_LEARNING_RATE"]
+        self.actor_lr = self.dic_agent_conf["ACTOR_LEARNING_RATE"]
+        self.lam_UR = int(self.dic_agent_conf["LAM_UPDATE_RATE"])
         
         self.constrain = dic_traffic_env_conf['CONST_NUM']
-        self.actor_lr=0.01
 
         if cnt_round == 0: 
             # initialization
             self.critic_local = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Critic').to(device)
             self.critic_local2 = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Critic').to(device)
-            self.critic_optimiser = torch.optim.Adam(self.critic_local.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
-            self.critic_optimiser2 = torch.optim.Adam(self.critic_local2.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
+            self.critic_optimiser = torch.optim.Adam(self.critic_local.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
+            self.critic_optimiser2 = torch.optim.Adam(self.critic_local2.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
     
             self.critic_target = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Critic').to(device)
             self.critic_target2 = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Critic').to(device)
@@ -247,8 +255,8 @@ class SACAgentColight(Agent):
             if self.dic_traffic_env_conf["CONSTRAINT"]:
                 self.critic_local_cost = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Critic').to(device)
                 self.critic_local_cost2= ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Critic').to(device)
-                self.critic_optimiser_cost = torch.optim.Adam(self.critic_local_cost.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
-                self.critic_optimiser_cost2 = torch.optim.Adam(self.critic_local_cost2.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
+                self.critic_optimiser_cost = torch.optim.Adam(self.critic_local_cost.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
+                self.critic_optimiser_cost2 = torch.optim.Adam(self.critic_local_cost2.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
         
                 self.critic_target_cost = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Critic').to(device)
                 self.critic_target_cost2 = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Critic').to(device)
@@ -257,6 +265,10 @@ class SACAgentColight(Agent):
     
             self.actor_local = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Actor').to(device)
             self.actor_optimiser = torch.optim.Adam(self.actor_local.parameters(), lr=self.actor_lr)
+
+            # self.load_network("round_{0}_inter_{1}".format(999, self.intersection_id))
+            # self.load_network_bar("round_{0}_inter_{1}".format(999, self.intersection_id))
+
     
             self.log_alpha = torch.tensor(np.log(1.), requires_grad=True)
             self.alpha = self.log_alpha
@@ -269,8 +281,8 @@ class SACAgentColight(Agent):
             # initialization
             self.critic_local = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Colight').to(device)
             self.critic_local2 = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Colight').to(device)
-            self.critic_optimiser = torch.optim.Adam(self.critic_local.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
-            self.critic_optimiser2 = torch.optim.Adam(self.critic_local2.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
+            self.critic_optimiser = torch.optim.Adam(self.critic_local.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
+            self.critic_optimiser2 = torch.optim.Adam(self.critic_local2.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
     
             self.critic_target = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Colight').to(device)
             self.critic_target2 = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Colight').to(device)
@@ -278,8 +290,8 @@ class SACAgentColight(Agent):
             if self.dic_traffic_env_conf["CONSTRAINT"]:    
                 self.critic_local_cost = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Colight').to(device)
                 self.critic_local_cost2= ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Colight').to(device)
-                self.critic_optimiser_cost = torch.optim.Adam(self.critic_local_cost.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
-                self.critic_optimiser_cost2 = torch.optim.Adam(self.critic_local_cost2.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
+                self.critic_optimiser_cost = torch.optim.Adam(self.critic_local_cost.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
+                self.critic_optimiser_cost2 = torch.optim.Adam(self.critic_local_cost2.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
         
                 self.critic_target_cost = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Colight').to(device)
                 self.critic_target_cost2 = ColightNet(self.state_dim, self.num_actions, dic_traffic_env_conf, 'Colight').to(device)
@@ -402,14 +414,13 @@ class SACAgentColight(Agent):
             for i in range(len(sample_slice)):
                 _state.append([])
                 _next_state.append([])
-                _constraint.append([])
                 for j in range(self.num_agents):
                     state, action, next_state, reward, _, constraint = sample_slice[i][j]
                     _state[i].append(state)
                     _next_state[i].append(next_state)
                     _action.append(action)
                     _reward.append(reward)
-                    _constraint[i].append(constraint)
+                    _constraint.append(constraint)
     
             self.states = _state 
             self.actions = torch.tensor(_action).to(device) 
@@ -482,7 +493,7 @@ class SACAgentColight(Agent):
             self.alpha_optimiser.step()
             # self.alpha = self.log_alpha.exp()
     
-            if self.dic_traffic_env_conf["CONSTRAINT"] and self.cnt_round>self.constrain and k%7==0:
+            if self.dic_traffic_env_conf["CONSTRAINT"] and self.cnt_round>self.constrain and k%self.lam_UR==0:
                 
                 lam_loss = self.lambda_loss()
                 self.lam_optimiser.zero_grad()
@@ -503,6 +514,7 @@ class SACAgentColight(Agent):
             q_values_cost2 = self.action_att_predict(states_tensor, self.critic_local_cost2)
             penalty = self.lam * torch.min(q_values_cost, q_values_cost2).to(device)
             policy_loss = (action_probabilities * (inside_term+penalty)).sum(dim=1).mean()
+            # policy_loss = (action_probabilities * (inside_term-penalty)).sum(dim=1).mean()
         else:
             policy_loss = (action_probabilities * inside_term).sum(dim=1).mean()
             
@@ -552,20 +564,23 @@ class SACAgentColight(Agent):
     def load_network(self, file_name, file_path=None):
         if file_path == None:
             file_path = self.dic_path["PATH_TO_MODEL"]
+
+        if self.cnt_round==0:
+            file_path = self.dic_path["PATH_TO_PRETRAIN_MODEL"]
             
-        self.critic_local.load_state_dict(torch.load(os.path.join(file_path, "%s_critic.h5" % file_name)))  
-        self.critic_local2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic2.h5" % file_name)))  
+        self.critic_local.load_state_dict(torch.load(os.path.join(file_path, "%s_critic.h5" % file_name), map_location='cpu'))  
+        self.critic_local2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic2.h5" % file_name), map_location='cpu'))  
         if self.dic_traffic_env_conf["CONSTRAINT"]:
-            self.critic_local_cost.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_cost.h5" % file_name)))  
-            self.critic_local_cost2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_cost2.h5" % file_name)))  
+            self.critic_local_cost.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_cost.h5" % file_name), map_location='cpu'))  
+            self.critic_local_cost2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_cost2.h5" % file_name), map_location='cpu'))  
         
-        self.actor_local.load_state_dict(torch.load(os.path.join(file_path, "%s_actor.h5" % file_name)))  
+        self.actor_local.load_state_dict(torch.load(os.path.join(file_path, "%s_actor.h5" % file_name), map_location='cpu'))  
         
-        self.alpha = torch.load(os.path.join(file_path, "%s_alpha.pt" % file_name))        
+        self.alpha = torch.load(os.path.join(file_path, "%s_alpha.pt" % file_name), map_location='cpu')        
         self.log_alpha = self.alpha
         self.alpha_optimiser = torch.optim.Adam([self.log_alpha], lr=self.alpha_lr)
         
-        self.lam = torch.load(os.path.join(file_path, "%s_lam.pt" % file_name))        
+        self.lam = torch.load(os.path.join(file_path, "%s_lam.pt" % file_name), map_location='cpu')        
         self.lam_optimiser = torch.optim.Adam([self.lam], lr=self.lam_lr)
         
         print("succeed in loading model %s"%file_name)
@@ -573,11 +588,15 @@ class SACAgentColight(Agent):
     def load_network_bar(self, file_name, file_path=None):
         if file_path == None:
             file_path = self.dic_path["PATH_TO_MODEL"]
-        self.critic_target.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target.h5" % file_name)))  
-        self.critic_target2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target2.h5" % file_name)))  
+
+        if self.cnt_round==0:
+            file_path = self.dic_path["PATH_TO_PRETRAIN_MODEL"]
+
+        self.critic_target.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target.h5" % file_name), map_location='cpu'))  
+        self.critic_target2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target2.h5" % file_name), map_location='cpu'))  
         if self.dic_traffic_env_conf["CONSTRAINT"]:
-            self.critic_target_cost.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target_cost.h5" % file_name)))  
-            self.critic_target_cost2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target_cost2.h5" % file_name)))  
+            self.critic_target_cost.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target_cost.h5" % file_name), map_location='cpu'))  
+            self.critic_target_cost2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target_cost2.h5" % file_name), map_location='cpu'))  
         
         print("succeed in loading target model %s"%file_name) 
 

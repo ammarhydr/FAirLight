@@ -108,7 +108,7 @@ class Generator:
                     action_list.append(action)
 
             next_state, reward, constraint, done, _ = self.env.step(action_list)
-            if (self.env.get_current_time()-self.dic_traffic_env_conf["MIN_ACTION_TIME"])%100==0:
+            if (self.env.get_current_time()-self.dic_traffic_env_conf["MIN_ACTION_TIME"])%1000==0:
                 print("time: {0}, running_time: {1}".format(self.env.get_current_time()-self.dic_traffic_env_conf["MIN_ACTION_TIME"],
                                                             time.time()-step_start_time))
             state = next_state

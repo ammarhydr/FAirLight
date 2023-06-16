@@ -373,7 +373,7 @@ class ColightTorch(Agent):
             # sample the memory
             sample_size = min(self.dic_agent_conf["SAMPLE_SIZE"], len(memory_after_forget))
             sample_slice = random.sample(memory_after_forget, sample_size)
-            print("memory samples number:", sample_size)
+            # print("memory samples number:", sample_size)
     
             _state = []
             _next_state = []
@@ -406,7 +406,7 @@ class ColightTorch(Agent):
             q_values = self.action_att_predict(self.states, self.critic_local).gather(1, self.actions.reshape(-1,1))
 
             loss = torch.nn.MSELoss(reduction="none")(q_values, target_q_values).mean()
-            print("Loss: ", loss)
+            # print("Loss: ", loss)
             self.critic_optimiser.zero_grad()
             loss.backward()
             clip_grad_norm_(self.critic_local.parameters(), 0.5)
@@ -432,14 +432,14 @@ class ColightTorch(Agent):
         if file_path == None:
             file_path = self.dic_path["PATH_TO_MODEL"]
             
-        self.critic_local.load_state_dict(torch.load(os.path.join(file_path, "%s_critic.h5" % file_name)))  
+        self.critic_local.load_state_dict(torch.load(os.path.join(file_path, "%s_critic.h5" % file_name), map_location='cpu'))  
         
         print("succeed in loading model %s"%file_name)
 
     def load_network_bar(self, file_name, file_path=None):
         if file_path == None:
             file_path = self.dic_path["PATH_TO_MODEL"]
-        self.critic_target.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target.h5" % file_name)))  
+        self.critic_target.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target.h5" % file_name), map_location='cpu'))  
 
     def save_network(self, file_name):
         torch.save(self.critic_local.state_dict(), os.path.join(self.dic_path["PATH_TO_MODEL"], "%s_critic.h5" % file_name))        

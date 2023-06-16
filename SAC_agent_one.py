@@ -1,11 +1,16 @@
 import numpy as np 
 import os 
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+
 from agent import Agent
 import random 
 import torch
 from torch.nn.utils import clip_grad_norm_
+import pickle
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 
 # from torch import nn
 # import torch.nn.functional as F
@@ -45,7 +50,7 @@ class SACAgentOne(Agent):
         """
         super(SACAgentOne, self).__init__(
             dic_agent_conf, dic_traffic_env_conf, dic_path,intersection_id)
-        
+                
         self.num_agents=dic_traffic_env_conf['NUM_INTERSECTIONS']
         self.num_neighbors=min(dic_traffic_env_conf['TOP_K_ADJACENCY'],self.num_agents)
 
@@ -58,83 +63,103 @@ class SACAgentOne(Agent):
         if dic_traffic_env_conf['NEIGHBOR']:
             self.state_dim = 12 * 10#* self.num_agents with neighbor
         else:
-            self.state_dim = 12 + 8 #* self.num_agents
+            self.state_dim = 12 + 4 #* self.num_agents
         self.target_entropy = 0.98 * -np.log(1 / self.num_actions)
+        self.cost_lim = -10
 
-        self.constrain=dic_traffic_env_conf['CONST_NUM']
-
+        self.constrain = dic_traffic_env_conf['CONST_NUM']
         # self.alpha_lr=5e-06
         # self.cost_lim = -1#-5e-3
         # self.lam_lr=1e-7
         # self.actor_lr=0.0005
         
-        self.alpha_lr=5e-05
-        self.cost_lim = -10#-5e-3
-        self.lam_lr=1e-7
-        self.actor_lr=0.001
+        # # single worked
+        # self.alpha_lr = 5e-05
+        # self.lam_lr = 1e-3
+        # self.actor_lr = 1e-3
+
+        self.alpha_lr = self.dic_agent_conf["ALPHA_LEARNING_RATE"]
+        self.lam_lr = self.dic_agent_conf["LAM_LEARNING_RATE"]
+        self.actor_lr = self.dic_agent_conf["ACTOR_LEARNING_RATE"]
+        self.lam_UR = int(self.dic_agent_conf["LAM_UPDATE_RATE"])
 
         if cnt_round == 0: 
             # initialization
             self.critic_local = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
             self.critic_local2 = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
-            self.critic_optimiser = torch.optim.Adam(self.critic_local.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
-            self.critic_optimiser2 = torch.optim.Adam(self.critic_local2.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
+            self.critic_optimiser = torch.optim.Adam(self.critic_local.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
+            self.critic_optimiser2 = torch.optim.Adam(self.critic_local2.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
     
             self.critic_target = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
             self.critic_target2 = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
+
+            self.actor_local = Network(input_dimension=self.state_dim, output_dimension=self.num_actions, output_activation=torch.nn.Softmax(dim=1)).to(device)
+            self.actor_optimiser = torch.optim.Adam(self.actor_local.parameters(), lr=self.actor_lr)
+            self.c_actions=[1,2,3,4]
             
+
             if self.dic_traffic_env_conf["CONSTRAINT"]:
                 self.critic_local_cost = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
                 self.critic_local_cost2= Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
-                self.critic_optimiser_cost = torch.optim.Adam(self.critic_local_cost.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
-                self.critic_optimiser_cost2 = torch.optim.Adam(self.critic_local_cost2.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
+                self.critic_optimiser_cost = torch.optim.Adam(self.critic_local_cost.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
+                self.critic_optimiser_cost2 = torch.optim.Adam(self.critic_local_cost2.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
         
                 self.critic_target_cost = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
                 self.critic_target_cost2 = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
     
-            self.soft_update_target_networks(tau=1.)
-    
-            self.actor_local = Network(input_dimension=self.state_dim, output_dimension=self.num_actions, output_activation=torch.nn.Softmax(dim=1)).to(device)
-            self.actor_optimiser = torch.optim.Adam(self.actor_local.parameters(), lr=self.actor_lr)
-    
+            self.soft_update_target_networks(tau=1.)      
+
+            # self.load_network("round_{0}_inter_{1}".format(499, self.intersection_id))
+            # self.load_network_bar("round_{0}_inter_{1}".format(499, self.intersection_id))
+            
             self.log_alpha = torch.tensor(np.log(1.), requires_grad=True)
             self.alpha = self.log_alpha
             self.alpha_optimiser = torch.optim.Adam([self.log_alpha], lr=self.alpha_lr)
 
             self.lam = torch.tensor(1.0, requires_grad=True)
             self.lam_optimiser = torch.optim.Adam([self.lam], lr=self.lam_lr)
-
         else:
             # initialization
             self.critic_local = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
             self.critic_local2 = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
-            self.critic_optimiser = torch.optim.Adam(self.critic_local.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
-            self.critic_optimiser2 = torch.optim.Adam(self.critic_local2.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
+            self.critic_optimiser = torch.optim.Adam(self.critic_local.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
+            self.critic_optimiser2 = torch.optim.Adam(self.critic_local2.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
     
             self.critic_target = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
             self.critic_target2 = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
+    
+            self.actor_local = Network(input_dimension=self.state_dim, output_dimension=self.num_actions, output_activation=torch.nn.Softmax(dim=1)).to(device)
+            self.actor_optimiser = torch.optim.Adam(self.actor_local.parameters(), lr=self.actor_lr)
+
 
             if self.dic_traffic_env_conf["CONSTRAINT"]:    
                 self.critic_local_cost = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
                 self.critic_local_cost2= Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
-                self.critic_optimiser_cost = torch.optim.Adam(self.critic_local_cost.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
-                self.critic_optimiser_cost2 = torch.optim.Adam(self.critic_local_cost2.parameters(), lr=self.dic_agent_conf["LEARNING_RATE"])
+                self.critic_optimiser_cost = torch.optim.Adam(self.critic_local_cost.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
+                self.critic_optimiser_cost2 = torch.optim.Adam(self.critic_local_cost2.parameters(), lr=self.dic_agent_conf["CRITIC_LEARNING_RATE"])
         
                 self.critic_target_cost = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
                 self.critic_target_cost2 = Network(input_dimension=self.state_dim, output_dimension=self.num_actions).to(device)
     
             self.soft_update_target_networks(tau=1.)
-    
-            self.actor_local = Network(input_dimension=self.state_dim, output_dimension=self.num_actions, output_activation=torch.nn.Softmax(dim=1)).to(device)
-            self.actor_optimiser = torch.optim.Adam(self.actor_local.parameters(), lr=self.actor_lr)
+            self.load_network("round_{0}_inter_{1}".format(cnt_round - 1, self.intersection_id))
+            self.load_network_bar("round_{0}_inter_{1}".format(cnt_round - 1, self.intersection_id))
+
+        decayed_epsilon = self.dic_agent_conf["EPSILON"] * pow(self.dic_agent_conf["EPSILON_DECAY"], cnt_round)
+        self.dic_agent_conf["EPSILON"] = max(decayed_epsilon, self.dic_agent_conf["MIN_EPSILON"])
+
+        # if self.dic_traffic_env_conf["CONSTRAINT"] and cnt_round > self.constrain:
+        #     decayed_epsilon = self.dic_agent_conf["EPSILON"] * pow(self.dic_agent_conf["EPSILON_DECAY"], cnt_round-self.constrain)
+        #     self.dic_agent_conf["EPSILON"] = max(decayed_epsilon, self.dic_agent_conf["MIN_EPSILON"])  
             
-            try:
-                # print('init q load')
-                self.load_network("round_{0}_inter_{1}".format(cnt_round-1, self.intersection_id))
-                # print('init q_bar load')
-                self.load_network_bar("round_{0}_inter_{1}".format(cnt_round - 1, self.intersection_id))
-            except:
-                print("fail to load network, current round: {0}".format(cnt_round))
+            
+            
+        #     decayed_lr = self.dic_agent_conf["CRITIC_LEARNING_RATE"] * pow(self.dic_agent_conf["LEARNING_DECAY"], cnt_round)
+        #     self.dic_agent_conf["CRITIC_LEARNING_RATE"] = max(decayed_lr, self.dic_agent_conf["MIN_LEARNING_RATE"])
+            
+        #     decayed_lr = self.dic_agent_conf["ACTOR_LEARNING_RATE"] * pow(self.dic_agent_conf["LEARNING_DECAY"], cnt_round)
+        #     self.dic_agent_conf["ACTOR_LEARNING_RATE"] = max(decayed_lr, self.dic_agent_conf["MIN_LEARNING_RATE"])
+
         # print(self.alpha)
 
     def choose_action(self, count, state):
@@ -143,6 +168,7 @@ class SACAgentOne(Agent):
         -input: state:[[state inter1],[state inter1]]
         -output: act: [#agents,num_actions]
         '''
+
 
         feature=[]
         for j in range(self.num_agents):
@@ -158,8 +184,31 @@ class SACAgentOne(Agent):
         
         state_input=np.array(feature)
         action_probabilities = self.get_action_probabilities(state_input)
-        discrete_action = [np.random.choice(range(self.num_actions), p=probs) for probs in action_probabilities]
+        # discrete_action = [np.random.choice(range(self.num_actions), p=probs) for probs in action_probabilities]
         # discrete_action = [np.random.choice(range(self.num_actions), p=action_probabilities)]
+        if np.random.rand() <= self.dic_agent_conf["EPSILON"]:
+            discrete_action = [np.random.randint(0, self.num_actions)]
+        else:
+            discrete_action = [np.argmax(action_probabilities,axis=-1)]
+
+        self.c_actions.append(discrete_action[0])
+        # if self.dic_traffic_env_conf["CONSTRAINT"] and self.cnt_round>self.constrain and len(set(self.c_actions[-4:]))==1:
+        # if self.dic_traffic_env_conf["CONSTRAINT"] and len(set(self.c_actions[-4:]))==1:
+        # # if len(set(self.c_actions[-4:]))==1 and self.cnt_round>self.constrain:
+        #     # # print('Constrain violated action: ',discrete_action)
+        #     self.c_actions.pop()
+        #     action_probabilities[discrete_action]=0
+        #     discrete_action = [np.argmax(action_probabilities)]
+        #     # if self.c_actions[-1]==0:
+        #     #     discrete_action=[2]
+        #     # elif self.c_actions[-1]==2:
+        #     #     discrete_action=[0]
+        #     # elif self.c_actions[-1]==1:
+        #     #     discrete_action=[3]            
+        #     # elif self.c_actions[-1]==3:
+        #     #     discrete_action=[1]
+        #     self.c_actions.append(discrete_action[0])
+        #     # # print('New action: ',discrete_action)
         return discrete_action
 
     def get_action_probabilities(self, state):
@@ -197,13 +246,13 @@ class SACAgentOne(Agent):
         memory_after_forget = self.memory[ind_sta: ind_end]
         print("memory size after forget:", len(memory_after_forget))
 
-        sample_size = min(self.dic_agent_conf["SAMPLE_SIZE"], len(memory_after_forget))
-        print("memory samples number:", sample_size)
 
         epochs = self.dic_agent_conf["EPOCHS"]
         for k in range(epochs):   
             # sample the memory
+            sample_size = min(self.dic_agent_conf["SAMPLE_SIZE"], len(memory_after_forget))
             sample_slice = random.sample(memory_after_forget, sample_size)
+            # print("memory samples number:", sample_size)
             
             _state = []
             _next_state = []
@@ -257,14 +306,20 @@ class SACAgentOne(Agent):
                 critic_loss.backward()
                 critic2_loss.backward()
 
-                clip_grad_norm_(self.critic_local.parameters(), 0.5)
-                clip_grad_norm_(self.critic_local2.parameters(), 0.5)
+                clip_grad_norm_(self.critic_local.parameters(), 2)
+                clip_grad_norm_(self.critic_local2.parameters(), 2)
     
                 self.critic_optimiser.step()
                 self.critic_optimiser.zero_grad()
     
                 self.critic_optimiser2.step()
                 self.critic_optimiser2.zero_grad()  
+
+                actor_loss, log_action_probabilities = self.actor_loss(self.states_tensor[i])
+                actor_loss.backward()
+                clip_grad_norm_(self.actor_local.parameters(), 2)
+                self.actor_optimiser.step()   
+                self.actor_optimiser.zero_grad()
                 
                 if self.dic_traffic_env_conf["CONSTRAINT"] and self.cnt_round>self.constrain:
                     soft_q_values_cost = self.critic_local_cost(self.states_tensor[i]).gather(1, self.actions_tensor[i].reshape(-1,1)).squeeze(-1)
@@ -275,30 +330,28 @@ class SACAgentOne(Agent):
                     critic_loss_cost2 = cse_cost2.mean()
                     
                     critic_loss_cost.backward()
-                    self.critic_optimiser_cost.step()
                     critic_loss_cost2.backward()
-                    self.critic_optimiser_cost2.step()
-        
-                actor_loss, log_action_probabilities = self.actor_loss(self.states_tensor[i])
-                actor_loss.backward()
-                clip_grad_norm_(self.actor_local.parameters(), 0.5)
-                self.actor_optimiser.step()   
-                self.actor_optimiser.zero_grad()
 
+                    clip_grad_norm_(self.critic_local_cost.parameters(), 2)
+                    clip_grad_norm_(self.critic_local_cost2.parameters(), 2)
+
+                    self.critic_optimiser_cost.step()
+                    self.critic_optimiser_cost2.step()
+                    
+                    if k%self.lam_UR==0:
+                        lam_loss = self.lambda_loss(i)
+                        lam_loss.backward()
+                        self.lam_optimiser.step() 
+                        
             self.soft_update_target_networks()
-                
+
             alpha_loss = self.temperature_loss(log_action_probabilities)
             alpha_loss.backward()
             self.alpha_optimiser.step()
             # self.alpha = self.log_alpha.exp()
-    
-            if self.dic_traffic_env_conf["CONSTRAINT"] and self.cnt_round>self.constrain and k%10==0:
-                for i in range(self.num_agents):    
-                    lam_loss = self.lambda_loss(i)
-                    lam_loss.backward()
-                    self.lam_optimiser.step() 
-    
-          
+            
+        print("Actor Loss: ", actor_loss)
+        print("Critic Loss: ", critic_loss)      
         
     def actor_loss(self, states_tensor):
         action_probabilities, log_action_probabilities = self.get_action_info(states_tensor)
@@ -313,7 +366,7 @@ class SACAgentOne(Agent):
             policy_loss = (action_probabilities * (inside_term+penalty)).sum(dim=1).mean()
         else:
             policy_loss = (action_probabilities * inside_term).sum(dim=1).mean()
-            
+        # print("Actor Loss: ", policy_loss)
         return policy_loss, log_action_probabilities
 
     def temperature_loss(self, log_action_probabilities):
@@ -328,7 +381,9 @@ class SACAgentOne(Agent):
         
         self.log_lam = torch.nn.functional.softplus(self.lam)
         lambda_loss =  self.log_lam*violation.detach()
-        lambda_loss = -lambda_loss.sum(dim=-1)
+        lambda_loss = -lambda_loss.mean(dim=-1)
+        print("Lambda Loss: ", lambda_loss)
+
         return lambda_loss
     
     def get_action_info(self, states_tensor):
@@ -338,7 +393,7 @@ class SACAgentOne(Agent):
         log_action_probabilities = torch.log(action_probabilities + z)
         return action_probabilities, log_action_probabilities
 
-    def soft_update_target_networks(self, tau=0.01):
+    def soft_update_target_networks(self, tau=0.03):
         self.soft_update(self.critic_target, self.critic_local, tau)
         self.soft_update(self.critic_target2, self.critic_local2, tau)
         if self.dic_traffic_env_conf["CONSTRAINT"]:
@@ -358,31 +413,42 @@ class SACAgentOne(Agent):
         if file_path == None:
             file_path = self.dic_path["PATH_TO_MODEL"]
             
-        self.critic_local.load_state_dict(torch.load(os.path.join(file_path, "%s_critic.h5" % file_name)))  
-        self.critic_local2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic2.h5" % file_name)))  
+        if self.cnt_round==0:
+            file_path = self.dic_path["PATH_TO_PRETRAIN_MODEL"]
+
+        self.critic_local.load_state_dict(torch.load(os.path.join(file_path, "%s_critic.h5" % file_name), map_location='cpu'))  
+        self.critic_local2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic2.h5" % file_name), map_location='cpu'))  
         if self.dic_traffic_env_conf["CONSTRAINT"]:
-            self.critic_local_cost.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_cost.h5" % file_name)))  
-            self.critic_local_cost2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_cost2.h5" % file_name)))  
+            self.critic_local_cost.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_cost.h5" % file_name), map_location='cpu'))  
+            self.critic_local_cost2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_cost2.h5" % file_name), map_location='cpu'))  
         
-        self.actor_local.load_state_dict(torch.load(os.path.join(file_path, "%s_actor.h5" % file_name)))  
+        self.actor_local.load_state_dict(torch.load(os.path.join(file_path, "%s_actor.h5" % file_name), map_location='cpu'))  
         
-        self.alpha = torch.load(os.path.join(file_path, "%s_alpha.pt" % file_name))        
+        self.alpha = torch.load(os.path.join(file_path, "%s_alpha.pt" % file_name), map_location='cpu')        
         self.log_alpha = self.alpha
         self.alpha_optimiser = torch.optim.Adam([self.log_alpha], lr=self.alpha_lr)
         
-        self.lam = torch.load(os.path.join(file_path, "%s_lam.pt" % file_name))        
+        self.lam = torch.load(os.path.join(file_path, "%s_lam.pt" % file_name), map_location='cpu')        
         self.lam_optimiser = torch.optim.Adam([self.lam], lr=self.lam_lr)
+        
+        open_file = open(os.path.join(self.dic_path["PATH_TO_MODEL"], "%s_c_actions" % file_name), "rb")
+        self.c_actions = pickle.load(open_file)
+        open_file.close()
         
         print("succeed in loading model %s"%file_name)
 
     def load_network_bar(self, file_name, file_path=None):
         if file_path == None:
             file_path = self.dic_path["PATH_TO_MODEL"]
-        self.critic_target.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target.h5" % file_name)))  
-        self.critic_target2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target2.h5" % file_name)))  
+
+        if self.cnt_round==0:
+            file_path = self.dic_path["PATH_TO_PRETRAIN_MODEL"]
+
+        self.critic_target.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target.h5" % file_name), map_location='cpu'))  
+        self.critic_target2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target2.h5" % file_name), map_location='cpu'))  
         if self.dic_traffic_env_conf["CONSTRAINT"]:
-            self.critic_target_cost.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target_cost.h5" % file_name)))  
-            self.critic_target_cost2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target_cost2.h5" % file_name)))  
+            self.critic_target_cost.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target_cost.h5" % file_name), map_location='cpu'))  
+            self.critic_target_cost2.load_state_dict(torch.load(os.path.join(file_path, "%s_critic_target_cost2.h5" % file_name), map_location='cpu'))  
         
         print("succeed in loading target model %s"%file_name) 
 
@@ -396,6 +462,11 @@ class SACAgentOne(Agent):
         
         torch.save(self.alpha, os.path.join(self.dic_path["PATH_TO_MODEL"], "%s_alpha.pt" % file_name))  
         torch.save(self.lam, os.path.join(self.dic_path["PATH_TO_MODEL"], "%s_lam.pt" % file_name))  
+        
+        open_file = open(os.path.join(self.dic_path["PATH_TO_MODEL"], "%s_c_actions" % file_name), "wb")
+        pickle.dump(self.c_actions, open_file)
+        open_file.close()
+        
         
     def save_network_bar(self, file_name):
         torch.save(self.critic_target.state_dict(), os.path.join(self.dic_path["PATH_TO_MODEL"], "%s_critic_target.h5" % file_name))        

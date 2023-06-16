@@ -9,6 +9,8 @@ import matplotlib as mlp
 import shutil
 import argparse
 from sklearn.linear_model import LinearRegression
+from scipy.ndimage.filters import gaussian_filter1d
+
 
 import matplotlib as mlp
 #mlp.use("agg")
@@ -26,10 +28,10 @@ NAN_LABEL = -1
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--memo", type=str, default='Hangzhou_4_4')
+    # parser.add_argument("--memo", type=str, default='Hangzhou_4_4')
     # parser.add_argument("--memo", type=str, default='Jinan_3_4')
     # parser.add_argument("--memo", type=str, default='0515_afternoon_Colight_3_3_bi_high_2')
-    # parser.add_argument("--memo", type=str, default='SingleInt')
+    parser.add_argument("--memo", type=str, default='SingleInt')
     parser.add_argument("-b", action="store_true",default=False, help="run baseline analysis") ##
     return parser.parse_args()
 
@@ -112,25 +114,38 @@ def get_metrics(duration_list, queue_length_list, min_duration, min_duration_id,
 
     return total_summary
 
-
-
 def summary_plot(traffic_performance, figure_dir, mode_name, num_rounds, y_label):
 
     for traffic_name in traffic_performance:
         f, ax = plt.subplots(1, 1, figsize=(12, 4.5), dpi=200)
         for ti in range(len(traffic_performance[traffic_name])):
-            if 'Const' in traffic_performance[traffic_name][ti][1][1:]:
+            if 'OnlyEmm' in traffic_performance[traffic_name][ti][1][1:]:
+                name='$\it{OnlyEmm}$'
+            elif 'both' in traffic_performance[traffic_name][ti][1][1:]:
                 name='$\it{FAirLight}$'
+            elif 'peakMax_avEmm_beg' in traffic_performance[traffic_name][ti][1][1:]:
+                name='$\it{FAirLight-peakMax-avEmm}$'
+            elif 'Const' in traffic_performance[traffic_name][ti][1][1:]:
+                name='$\it{FAirLight}$'
+            elif 'OnlyPeak' in traffic_performance[traffic_name][ti][1][1:]:
+                name='Peak Only' 
+            elif 'OnlyAv' in traffic_performance[traffic_name][ti][1][1:]:
+                name='Average Only' 
             elif 'Colight' in traffic_performance[traffic_name][ti][1][1:]:
                 name='CoLight'
             elif 'DQN' in traffic_performance[traffic_name][ti][1][1:]:
                 name='DQN'
+            elif 'pre' in traffic_performance[traffic_name][ti][1][1:]:
+                name='$\it{FAirLight-PreTrain}$'
             else:
                 name='SAC-GNN'
+                
+            smooted = gaussian_filter1d(traffic_performance[traffic_name][ti][0], sigma=2)
+            # smooted = traffic_performance[traffic_name][ti][0]
             if name =='$\it{FAirLight}$':
-                plt.plot(traffic_performance[traffic_name][ti][0], label=name, linewidth=3)
+                plt.plot(smooted, label=name, linewidth=3, color='green')
             else:
-                plt.plot(traffic_performance[traffic_name][ti][0],'--', label=name, linewidth=1.3)                
+                plt.plot(smooted,'--', label=name, linewidth=1.3)                
         plt.legend(bbox_to_anchor=(0.5, 1.18), loc='upper center', ncol=4, fancybox=True, fontsize=18)
         plt.ylabel(y_label, fontsize=18)
         plt.xlabel('Episode', fontsize=18)
@@ -145,6 +160,8 @@ def summary_plot_throughput_phase(traffic_performance, figure_dir, mode_name, nu
             for ti in range(len(traffic_performance[traffic_name])):
                 if 'Const' in traffic_performance[traffic_name][ti][1][1:]:
                     name='$\it{FAirLight}$'
+                elif 'OnlyEmission' in traffic_performance[traffic_name][ti][1][1:]:
+                    name='OnlyEmission'
                 elif 'Colight' in traffic_performance[traffic_name][ti][1][1:]:
                     name='CoLight'
                 elif 'DQN' in traffic_performance[traffic_name][ti][1][1:]:
@@ -159,6 +176,105 @@ def summary_plot_throughput_phase(traffic_performance, figure_dir, mode_name, nu
             plt.legend(bbox_to_anchor=(0.5, 1.1), loc='upper center', ncol=4, fancybox=True, fontsize=18)
             plt.ylabel(y_label, fontsize=18)
             plt.xlabel('Episode', fontsize=18)
+            plt.savefig(figure_dir + "/" + traffic_name + "-" + mode_name+str(j)+".pdf")
+            plt.close()
+            
+def summary_plot_int(traffic_performance, figure_dir, mode_name, num_rounds, num_int, title):
+
+    for traffic_name in traffic_performance:
+        if num_int==16:
+            f, axs = plt.subplots(4, 4, figsize=(12, 9), dpi=200)
+        elif num_int==12:
+            f, axs = plt.subplots(3, 4, figsize=(12, 9), dpi=200)
+        else:
+            f, axs = plt.subplots(1, 2, figsize=(12, 9), dpi=200)
+        f.suptitle(title, fontsize=18, y=0.95)
+        labels=[]
+        for j, ax in zip(range(num_int), axs.ravel()):
+            for ti in range(len(traffic_performance[traffic_name])):
+                if 'Const' in traffic_performance[traffic_name][ti][1][1:]:
+                    name='$\it{FAirLight}$'
+                elif 'OnlyEmission' in traffic_performance[traffic_name][ti][1][1:]:
+                    name='OnlyEmission'
+                elif 'Colight' in traffic_performance[traffic_name][ti][1][1:]:
+                    name='CoLight'
+                elif 'DQN' in traffic_performance[traffic_name][ti][1][1:]:
+                    name='DQN'
+                else:
+                    name='SAC-GNN'
+                data=([r[j] for r in traffic_performance[traffic_name][ti][0]])
+                if name =='$\it{FAirLight}$':
+                    ax.plot(data, label=name, linewidth=2)
+                else:
+                    ax.plot(data,'--', label=name, linewidth=0.8)
+                    ax.title.set_text('Intersection' + str(j))
+                if name not in labels: labels.append(name) 
+                # ax.legend(bbox_to_anchor=(0.5, 1.1), loc='upper right', ncol=4, fancybox=True, fontsize=18)
+            # ax.ylabel(y_label, fontsize=18)
+            # ax.xlabel('Episode', fontsize=18)
+        f.legend(labels, bbox_to_anchor=(0.5, 1.1), loc='upper center', ncol=len(labels), fancybox=True, fontsize=18)
+        plt.savefig(figure_dir + "/" + traffic_name + "-" + mode_name+str(j)+".pdf")
+        plt.close()
+        
+def summary_plot_per_int_all(dur, em, pem, figure_dir, num_int, mode_name):
+
+    for traffic_name in em:        
+        for j in range(num_int):
+            f, ax = plt.subplots(1, 3, figsize=(15, 5), dpi=200)
+            f.suptitle('Intersection' + str(j), fontsize=18, y=0.95)
+            for ti in range(len(dur[traffic_name])):
+                if 'Const' in dur[traffic_name][ti][1][1:]:
+                    name='$\it{FAirLight}$'
+                elif 'OnlyEmission' in dur[traffic_name][ti][1][1:]:
+                    name='OnlyEmission'
+                elif 'Colight' in dur[traffic_name][ti][1][1:]:
+                    name='CoLight'
+                elif 'DQN' in dur[traffic_name][ti][1][1:]:
+                    name='DQN'
+                else:
+                    name='SAC-GNN'
+                data=np.cumsum([r[j] for r in dur[traffic_name][ti][0]])
+                if name =='$\it{FAirLight}$':
+                    ax[0].plot(data, label=name, linewidth=2)
+                else:
+                    ax[0].plot(data,'--', label=name, linewidth=0.8)
+                ax[0].set_title('Queue Length', y=-0.01)
+                ax[0].legend(loc='upper left')
+                
+            for ti in range(len(em[traffic_name])):
+                if 'Const' in dur[traffic_name][ti][1][1:]:
+                    name='$\it{FAirLight}$'
+                elif 'Colight' in em[traffic_name][ti][1][1:]:
+                    name='CoLight'
+                elif 'DQN' in em[traffic_name][ti][1][1:]:
+                    name='DQN'
+                else:
+                    name='SAC-GNN'
+                data=np.cumsum([r[j] for r in em[traffic_name][ti][0]])
+                if name =='$\it{FAirLight}$':
+                    ax[1].plot(data, label=name, linewidth=2)
+                else:
+                    ax[1].plot(data,'--', label=name, linewidth=0.8)
+                ax[1].set_title('Emission', y=-0.01)
+                ax[1].legend(loc='upper left')
+                    
+            for ti in range(len(pem[traffic_name])):
+                if 'Const' in pem[traffic_name][ti][1][1:]:
+                    name='$\it{FAirLight}$'
+                elif 'Colight' in pem[traffic_name][ti][1][1:]:
+                    name='CoLight'
+                elif 'DQN' in pem[traffic_name][ti][1][1:]:
+                    name='DQN'
+                else:
+                    name='SAC-GNN'
+                data=np.cumsum([r[j] for r in pem[traffic_name][ti][0]])
+                if name =='$\it{FAirLight}$':
+                    ax[2].plot(data, label=name, linewidth=2)
+                else:
+                    ax[2].plot(data,'--', label=name, linewidth=0.8)
+                ax[2].set_title('Emission Violation Rate', y=-0.01)
+                ax[2].legend(loc='upper left')
+
             plt.savefig(figure_dir + "/" + traffic_name + "-" + mode_name+str(j)+".pdf")
             plt.close()
 
@@ -272,13 +388,18 @@ def performance_at_min_duration_round_plot(performance_at_min_duration_round, fi
 def summary_detail_test(memo, total_summary):
     # each_round_train_duration
     
+    performance_max_duration={}
     performance_queue={}
     performance_duration = {}
+    performance_duration_flow={}
+    performance_queue_int={}
     performance_emission = {}
+    performance_emission_int={}
     performance_speed={}
     performance_emission_params={}
     performance_peak_green_time = {}
     performance_peak_emission= {}
+    performance_peak_emission_int= {}
     performance_througput_phase={}
     performance_througput={}
     performance_at_min_duration_round = {}
@@ -288,18 +409,18 @@ def summary_detail_test(memo, total_summary):
     for traffic_file in os.listdir(records_dir):
         if ".xml" not in traffic_file and ".json" not in traffic_file:
             continue
-        file='anon_4_4_hangzhou_real_5816.json_'
+        # file='anon_4_4_hangzhou_real_5816.json_'
         # file='anon_3_4_jinan_real.json_'
-        # file='anon_3_4_jinan_real_new.json_'
         # file='anon_3_3_300_0.3_bi_high.json_'
-        # file='anon_1_1_2400_uni.json_'
+        file='anon_1_1_2400_uni.json_'
         # if traffic_file not in [file+'SAC_Attention_Const200', file+'SAC_Attention200', file+'Colight_torch200', file+'DQN_torch200_old']:
-        models=[file+'SAC_Attention_Const200_new_0201', file+'SAC_Attention200_new_0201', file+'Colight_torch200_new_0201', file+'DQN_torch200_new_0201']#,
+        # models=[file+'SAC_Attention_Const200_new_0416_peakEmm_avMax_beg', file+'SAC_Attention_Const200_new_0407_onlypeak_both_beg', file+'SAC_Attention_Const200_new_0407_peakEmm_avMax_beg']#, file+'DQN_torch200_new_0201']#,
                 # file+'SAC_Const200_new', file+'SAC200_new']
-        if traffic_file not in models:
-        # if traffic_file not in [file+'02_01_10_49_48']:
-        # if traffic_file not in [file+'SAC_Const', file+'SAC', file+'DQN_torch']:
-        # if traffic_file not in [file+'MaxPressure', file+'Fixedtime']:#, 'anon_3_3_300_0.3_uni.json_SAC_Attention_Const']:
+        # if traffic_file not in models:
+        if traffic_file not in [file+'SAC_both',  file+'SAC_OnlyAv', file+'SAC_OnlyPeak', file+'SAC_noconst']:#,file+'Colight_torch', file+'DQN_torch']:
+        # if traffic_file not in [file+'SAC_both', file+'05_26_18_26_07', file+'05_26_18_25_52']:
+        # if traffic_file not in [file+'MaxPressure', file+'Fixedtime']:
+        # if traffic_file not in [file+'SAC_both', file+'SAC_noconst',file+'Colight_torch', file+'DQN_torch']:
             continue
 
         print(traffic_file)
@@ -324,13 +445,18 @@ def summary_detail_test(memo, total_summary):
 
         traffic_vol = get_traffic_volume(dic_exp_conf["TRAFFIC_FILE"][0], run_counts)
         nan_thres = 120
-
+        
+        max_duration_round_list=[]
         duration_each_round_list = []
         queue_length_each_round_list = []
+        duration_flow_each_round_list=[]
+        queue_length_each_int_list=[]
         emission_each_round_list = []
+        emission_each_int_list=[]
         speed_each_round_list=[]
         peak_green_violation_each_round_list=[]
         peak_emission_violation_each_round_list = []
+        peak_emission_violation_each_int_list=[]
         num_vehicle_left_each_round_list = []
         throughput_by_phase_round_list = []
         throughput_all_round_list = []
@@ -415,10 +541,10 @@ def summary_detail_test(memo, total_summary):
                     speed_each_round.append(np.mean(list_vehicle_speed))
                     peak_max_green_violations_round.append(peak_max_green_violations)
                     peak_emission_violations_round.append(peak_emission_violations)
-                    throughput_all_round.append(throughput_all)
                     num_vehicle_left_round.append(num_vehicle_left)
                     for i in range(4):
                         throughput_by_phase_round[i]+=throughput_by_phase[i]
+                    throughput_all_round.append(throughput_all)
                     list_num_vehicle_inter.append(list_num_vehicle_sample)
                     list_emission_inter.append(list_emission_sample)
                 except:
@@ -432,6 +558,7 @@ def summary_detail_test(memo, total_summary):
 
             df_vehicle_all = pd.concat(df_vehicle_all)
             vehicle_duration = df_vehicle_all.groupby(by=['vehicle_id'])['duration'].sum()
+            max_vehicle_duration=max(vehicle_duration)
             ave_duration = vehicle_duration.mean()
             ave_queue_length = np.mean(queue_length_each_round)
             ave_emission = np.mean(emission_each_round)
@@ -439,13 +566,17 @@ def summary_detail_test(memo, total_summary):
             peak_max_green = np.sum(peak_max_green_violations_round)
             peak_emission = np.sum(peak_emission_violations_round)
             throughput = np.sum(throughput_all_round)
-
+            
+            max_duration_round_list.append(max_vehicle_duration)
             duration_each_round_list.append(ave_duration)
             queue_length_each_round_list.append(ave_queue_length)
+            queue_length_each_int_list.append(queue_length_each_round)
             emission_each_round_list.append(ave_emission)
+            emission_each_int_list.append(emission_each_round)
             speed_each_round_list.append(ave_speed)
             peak_green_violation_each_round_list.append(peak_max_green)
             peak_emission_violation_each_round_list.append(peak_emission)
+            peak_emission_violation_each_int_list.append(peak_emission_violations_round)
             num_vehicle_left_each_round_list.append(num_vehicle_left_round)
             throughput_by_phase_round_list.append(throughput_by_phase_round)
             throughput_all_round_list.append(throughput)
@@ -470,6 +601,8 @@ def summary_detail_test(memo, total_summary):
             duration_flow['direction'] = duration_flow['vehicle_id'].apply(lambda x:x.split('_')[1])
             duration_flow_ave = duration_flow.groupby(by=['direction'])['duration'].mean()
             print(duration_flow_ave)
+            
+            duration_flow_each_round_list.append(np.mean(duration_flow_ave))
 
             # print(real_traffic_vol, traffic_vol, traffic_vol - real_traffic_vol, nan_num)
             if min_queue_length > ave_queue_length:
@@ -557,6 +690,9 @@ def summary_detail_test(memo, total_summary):
 
 
         # print(os.path.join(result_dir, "test_results.csv"))
+        
+        plot_from=0
+        plot_t0=500
 
         # total_summary
         total_summary = get_metrics(duration_each_round_list, queue_length_each_round_list,
@@ -565,23 +701,34 @@ def summary_detail_test(memo, total_summary):
                                     mode_name="test", save_path=result_dir, num_rounds=num_rounds,
                                     min_duration2=None if "peak" not in traffic_file else min_duration2)
         # peak_green_violation_each_round_list =[i if i<10000 else 10000 for i in peak_green_violation_each_round_list]
-        # peak_green_violation_each_round_list =[i if i<4000 else 4000 for i in peak_green_violation_each_round_list]
+        peak_green_violation_each_round_list =[i if i<500 else 500 for i in peak_green_violation_each_round_list]
+        # emission_each_round_list =[i if i<200000 else 200000 for i in emission_each_round_list]
         if traffic_name not in performance_duration:
-            performance_duration[traffic_name] = [(duration_each_round_list, traffic_time)]
+            performance_max_duration[traffic_name]=[(max_duration_round_list, traffic_time)]
+            performance_duration[traffic_name] = [(duration_each_round_list[plot_from:plot_t0], traffic_time)]
+            performance_duration_flow[traffic_name] = [(duration_flow_each_round_list[plot_from:plot_t0], traffic_time)]
+            performance_queue_int[traffic_name] = [(queue_length_each_int_list, traffic_time)]
             performance_queue[traffic_name] = [(queue_length_each_round_list, traffic_time)]
-            performance_emission[traffic_name] = [(emission_each_round_list, traffic_time)]
+            performance_emission[traffic_name] = [(emission_each_round_list[plot_from:plot_t0], traffic_time)]
+            performance_emission_int[traffic_name] =[(emission_each_int_list, traffic_time)]
             performance_speed[traffic_name] = [(speed_each_round_list, traffic_time)]
-            performance_peak_green_time[traffic_name] = [(peak_green_violation_each_round_list, traffic_time)]
-            performance_peak_emission[traffic_name] = [(peak_emission_violation_each_round_list, traffic_time)]
+            performance_peak_green_time[traffic_name] = [(peak_green_violation_each_round_list[plot_from:plot_t0], traffic_time)]
+            performance_peak_emission[traffic_name] = [(peak_emission_violation_each_round_list[plot_from:plot_t0], traffic_time)]
+            performance_peak_emission_int[traffic_name] = [(peak_emission_violation_each_int_list, traffic_time)]
             performance_througput_phase[traffic_name] = [(throughput_by_phase_round_list, traffic_time)]
             performance_througput[traffic_name] = [(throughput_all_round_list, traffic_time)]
         else:
-            performance_duration[traffic_name].append((duration_each_round_list, traffic_time))
+            performance_max_duration[traffic_name].append((max_duration_round_list, traffic_time))
+            performance_duration[traffic_name].append((duration_each_round_list[plot_from:plot_t0], traffic_time))
+            performance_duration_flow[traffic_name].append((duration_flow_each_round_list[plot_from:plot_t0], traffic_time))
+            performance_queue_int[traffic_name].append((queue_length_each_int_list, traffic_time))
             performance_queue[traffic_name].append((queue_length_each_round_list, traffic_time))
-            performance_emission[traffic_name].append((emission_each_round_list, traffic_time))
+            performance_emission[traffic_name].append((emission_each_round_list[plot_from:plot_t0], traffic_time))
+            performance_emission_int[traffic_name].append((emission_each_int_list, traffic_time))
             performance_speed[traffic_name].append((speed_each_round_list, traffic_time))
-            performance_peak_green_time[traffic_name].append((peak_green_violation_each_round_list, traffic_time))
-            performance_peak_emission[traffic_name].append((peak_emission_violation_each_round_list, traffic_time))
+            performance_peak_green_time[traffic_name].append((peak_green_violation_each_round_list[plot_from:plot_t0], traffic_time))
+            performance_peak_emission[traffic_name].append((peak_emission_violation_each_round_list[plot_from:plot_t0], traffic_time))
+            performance_peak_emission_int[traffic_name].append((peak_emission_violation_each_int_list, traffic_time))
             performance_througput_phase[traffic_name].append((throughput_by_phase_round_list, traffic_time))
             performance_througput[traffic_name].append((throughput_all_round_list, traffic_time))
             
@@ -604,13 +751,25 @@ def summary_detail_test(memo, total_summary):
         os.makedirs(figure_dir)
     if dic_exp_conf["EARLY_STOP"]:
         performance_duration = padding_duration(performance_duration)
-    summary_plot(performance_duration, figure_dir, mode_name="test", num_rounds=num_rounds, y_label='Travel Time (s)')
+
+
+    summary_plot(performance_duration, figure_dir, mode_name="test_duration", num_rounds=num_rounds, y_label='Travel Time (s)')
+    summary_plot(performance_duration_flow, figure_dir, mode_name="test_duration_flow", num_rounds=num_rounds, y_label='Flow Time (s)')
+    summary_plot(performance_queue, figure_dir, mode_name="test_queue", num_rounds=num_rounds, y_label='Queue Length (s)')
     summary_plot(performance_emission, figure_dir, mode_name="test_emission", num_rounds=num_rounds, y_label='$CO_2$ Emission rate (liter)')
     summary_plot(performance_peak_green_time, figure_dir, mode_name="Peak_green_violation", num_rounds=num_rounds, y_label='Green Violation')
     summary_plot(performance_peak_emission, figure_dir, mode_name="Peak_emission_violation", num_rounds=num_rounds, y_label='Emission Violation')
-    summary_plot(performance_througput, figure_dir, mode_name="Througput", num_rounds=num_rounds, y_label='Throughput')
+    summary_plot_per_int_all(performance_queue_int, performance_emission_int, performance_peak_emission_int, figure_dir, num_intersection, mode_name='AllTreeTogether')
+    
+    if num_intersection>1:
+        summary_plot(performance_througput, figure_dir, mode_name="Througput", num_rounds=num_rounds, y_label='Throughput')
+        summary_plot_throughput_phase(performance_througput_phase, figure_dir, mode_name="Througput_phase", num_rounds=num_rounds, y_label='Throughput')
+        summary_plot_int(performance_queue_int, figure_dir, mode_name="QueueLength", num_rounds=num_rounds,num_int=num_intersection, title='Queue')
+        summary_plot_int(performance_emission_int, figure_dir, mode_name="Emission", num_rounds=num_rounds,num_int=num_intersection, title='Emission')
+        summary_plot_int(performance_peak_emission_int, figure_dir, mode_name="PeakEmission", num_rounds=num_rounds, num_int=num_intersection, title='Peak Emission Violation')
 
-    summary_plot_throughput_phase(performance_througput_phase, figure_dir, mode_name="Througput_phase", num_rounds=num_rounds, y_label='Throughput')
+    
+
     # performance_at_min_duration_round_plot(performance_at_min_duration_round, figure_dir, mode_name="test")
     
     
